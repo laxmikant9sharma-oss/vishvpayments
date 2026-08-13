@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="hi">
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,33 +10,28 @@
   input { width:100%; padding:12px; font-size:16px; border:1px solid #ddd; border-radius:8px; margin:12px 0; box-sizing:border-box; }
   button { width:100%; padding:12px; font-size:16px; background:#6d28d9; color:#fff; border:none; border-radius:8px; cursor:pointer; }
   button:disabled { background:#aaa; }
-  #result { margin-top:20px; text-align:center; }
-  #result img { max-width:200px; }
   #error { color:#c0392b; margin-top:8px; font-size:14px; }
 </style>
 </head>
 <body>
   <div class="card">
-    <h2>ENTER AMOUNT TO PAY </h2>
+    <h2>Enter Amount</h2>
     <input type="number" id="amount" placeholder="e.g. 500" min="1" />
     <button id="payBtn">Pay Now</button>
     <div id="error"></div>
-    <div id="result"></div>
   </div>
 
 <script>
 const payBtn = document.getElementById("payBtn");
 const amountInput = document.getElementById("amount");
 const errorDiv = document.getElementById("error");
-const resultDiv = document.getElementById("result");
 
 payBtn.addEventListener("click", async () => {
   errorDiv.textContent = "";
-  resultDiv.innerHTML = "";
-
   const amount = amountInput.value;
+
   if (!amount || Number(amount) <= 0) {
-    errorDiv.textContent = "Sahi amount daalein";
+    errorDiv.textContent = "Please enter a valid amount";
     return;
   }
 
@@ -52,18 +47,16 @@ payBtn.addEventListener("click", async () => {
     const data = await res.json();
 
     if (!data.success) {
-      errorDiv.textContent = data.message || "Kuch galat hua";
+      errorDiv.textContent = data.message || "Something went wrong";
+      payBtn.disabled = false;
+      payBtn.textContent = "Pay Now";
       return;
     }
 
-    resultDiv.innerHTML = 
-      <p>Order: ${data.merchant_order_no}</p>
-      <img src="${data.qr_code}" alt="Payment QR" />
-      <p><a href="${data.payment_url}" target="_blank">Payment Link Kholein</a></p>
-    ;
+    // Seedha payment page pe le jao — pay karke wahi "done" ho jayega
+    window.location.href = data.payment_url;
   } catch (err) {
-    errorDiv.textContent = "Server error, dobara try karein";
-  } finally {
+    errorDiv.textContent = "Server error, please try again";
     payBtn.disabled = false;
     payBtn.textContent = "Pay Now";
   }
