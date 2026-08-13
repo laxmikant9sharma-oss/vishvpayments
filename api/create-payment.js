@@ -22,10 +22,10 @@ function generateSignature(params, apiKey) {
   let signStr = "";
 
   for (const key of sortedKeys) {
-   signStr += ${key}=${filtered[key]}&;
+   signStr += `${key}=${filtered[key]}&`;
   }
 
-  signStr += key=${apiKey};
+  signStr += `key=${apiKey}`;
 
   return crypto.createHash("md5").update(signStr).digest("hex");
 }
