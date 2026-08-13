@@ -1,94 +1,214 @@
-const express = require("express");
-const axios = require("axios");
 const crypto = require("crypto");
 
-const router = express.Router();
-
-const MERCHANT_ID = process.env.WATCHPAYS_MERCHANT_ID;
-const API_KEY = process.env.WATCHPAYS_API_KEY;
-const CALLBACK_URL = process.env.WATCHPAYS_CALLBACK_URL;
-
-const CREATE_ENDPOINT = "https://api.watchpays.com/v1/create";
-
 function generateSignature(params, apiKey) {
-  const filtered = Object.fromEntries(
-    Object.entries(params).filter(
-      ([, v]) => v !== "" && v !== null && v !== undefined
-    )
-  );
 
-  const sortedKeys = Object.keys(filtered).sort();
+  const filtered = {};
 
-  let signStr = "";
-
-  for (const key of sortedKeys) {
-   signStr += key + "=" + filtered[key] + "&";
+  for (const key of Object.keys(params)) {
+    if (
+      params[key] !== undefined &&
+      params[key] !== null &&
+      params[key] !== ""
+    ) {
+      filtered[key] = String(params[key]);
+    }
   }
 
-  signStr += "key=" + apiKey;
+  // Alphabetical sorting
+  const sortedKeys = Object.keys(filtered).sort();
 
-  return crypto.createHash("md5").update(signStr).digest("hex");
+  let signString = "";
+
+  for (const key of sortedKeys) {
+    signString += ${key}=${filtered[key]}&;
+  }
+
+  // Remove last &
+  signString += key=${apiKey};
+
+  return crypto
+    .createHash("md5")
+    .update(signString)
+    .digest("hex");
 }
 
-router.post("/create-payment", async (req, res) => {
-  try {
-    const { amount } = req.body;
 
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+module.exports = async function handler(req, res) {
+
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      success: false,
+      message: "Method not allowed"
+    });
+  }
+
+  try {
+
+    const {
+      amount
+    } = req.body || {};
+
+    // Validate amount
+    const numericAmount = Number(amount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       return res.status(400).json({
         success: false,
-        message: "Invalid amount",
+        message: "Invalid amount"
       });
     }
 
-    const formattedAmount = Number(amount).toFixed(2);
+    // Always keep 2 decimals
+    const formattedAmount = numericAmount.toFixed(2);
 
-    const merchantOrderNo = "ORDS" + Date.now();
+    const merchantId = process.env.WATCHPAYS_MERCHANT_ID;
+    const apiKey = process.env.WATCHPAYS_API_KEY;
 
+    if (!merchantId || !apiKey) {
+      console.error("WatchPays environment variables are missing");
+
+      return res.status(500).json({
+        success: false,
+        message: "Payment configuration missing"
+      });
+    }
+
+    /*
+      Current website URL.
+      Example:
+      https://your-site.vercel.app
+    */
+    const protocol =
+      req.headers["x-forwarded-proto"] || "https";
+
+    const host = req.headers["x-forwarded-host"] || req.headers.host;
+
+    const baseUrl = ${protocol}://${host};
+
+    /*
+      WatchPays will send payment status here.
+    */
+    const callbackUrl = ${baseUrl}/api/callback;
+
+    /*
+      Unique order number.
+      Timestamp + random value.
+    */
+    const merchantOrderNo =
+      "ORD" +
+      Date.now().toString() +
+      Math.floor(1000 + Math.random() * 9000);
+
+
+    /*
+      Parameters used for signature.
+      IMPORTANT:
+      api_key is NOT included here.
+    */
     const params = {
-      merchant_id: MERCHANT_ID,
+      merchant_id: merchantId,
       amount: formattedAmount,
       merchant_order_no: merchantOrderNo,
-      callback_url: CALLBACK_URL,
+      callback_url: callbackUrl
     };
 
-    const signature = generateSignature(params, API_KEY);
 
+    const signature = generateSignature(
+      params,
+      apiKey
+    );
+
+
+    /*
+      WatchPays API request
+    */
     const payload = {
-      ...params,
-      api_key: API_KEY,
-      signature,
+      merchant_id: merchantId,
+      api_key: apiKey,
+      amount: formattedAmount,
+      merchant_order_no: merchantOrderNo,
+      callback_url: callbackUrl,
+      signature: signature
     };
 
-    const { data } = await axios.post(CREATE_ENDPOINT, payload, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    });
 
-    if (!data.success) {
-      return res.status(400).json({
-        success: false,
-        message: data.message || "Payment creation failed",
-      });
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => {
+      controller.abort();
+    }, 15000);
+
+
+    let response;
+
+    try {
+
+      response = await fetch(
+        "https://api.watchpays.com/v1/create",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify(payload),
+
+          signal: controller.signal
+        }
+      );
+
+    } finally {
+      clearTimeout(timeout);
     }
 
-    return res.json({
+
+    const data = await response.json();
+
+
+    console.log("WatchPays response:", data);
+
+
+    if (!response.ok || !data.success) {
+
+      return res.status(400).json({
+        success: false,
+        message:
+          data.message ||
+          "Payment creation failed"
+      });
+
+    }
+
+
+    if (!data.payment_url) {
+
+      return res.status(500).json({
+        success: false,
+        message: "Payment URL missing from gateway"
+      });
+
+    }
+
+
+    return res.status(200).json({
       success: true,
       payment_url: data.payment_url,
+      merchant_order_no: merchantOrderNo,
+      amount: formattedAmount
     });
+
+
   } catch (err) {
+
     console.error(
       "create-payment error:",
-      err.response?.data || err.message
+      err
     );
 
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Server error"
     });
   }
-});
-
-module.exports = router;
+};
