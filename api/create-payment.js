@@ -34,7 +34,7 @@ router.post("/create-payment", async (req, res) => {
   try {
     const { amount } = req.body;
 
-    if (!amount  isNaN(amount)  Number(amount) <= 0) {
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
       return res.status(400).json({
         success: false,
         message: "Invalid amount",
