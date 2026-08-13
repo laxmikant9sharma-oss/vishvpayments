@@ -22,7 +22,7 @@ function generateSignature(params, apiKey) {
   let signStr = "";
 
   for (const key of sortedKeys) {
-    signStr += ${key}=${filtered[key]}&;
+   signStr += ${key}=${filtered[key]}&;
   }
 
   signStr += key=${apiKey};
