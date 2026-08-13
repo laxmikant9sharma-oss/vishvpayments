@@ -1,162 +1,73 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Payment QR Generator</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pay Now</title>
 <style>
-  * { box-sizing: border-box; }
-  body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0;
-    padding: 20px;
-  }
-  .card {
-    background: #fff;
-    border-radius: 16px;
-    padding: 32px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 20px 50px rgba(0,0,0,0.25);
-    text-align: center;
-  }
-  h2 {
-    margin-top: 0;
-    color: #1f2937;
-    font-size: 22px;
-  }
-  .field {
-    text-align: left;
-    margin-bottom: 14px;
-  }
-  label {
-    display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: #4b5563;
-    margin-bottom: 6px;
-  }
-  input {
-    width: 100%;
-    padding: 12px;
-    border: 1.5px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 15px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  input:focus {
-    border-color: #6366f1;
-  }
-  button {
-    width: 100%;
-    padding: 13px;
-    margin-top: 6px;
-    background: #6366f1;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  button:hover { background: #4f46e5; }
-  #qrBox {
-    margin-top: 22px;
-    display: none;
-  }
-  #qrcode {
-    display: flex;
-    justify-content: center;
-    margin: 14px 0;
-  }
-  #qrcode img, #qrcode canvas {
-    border-radius: 8px;
-    border: 1px solid #e5e7eb;
-    padding: 8px;
-  }
-  .amtShow {
-    font-size: 20px;
-    font-weight: 700;
-    color: #1f2937;
-  }
-  .note {
-    font-size: 12px;
-    color: #9ca3af;
-    margin-top: 8px;
-  }
-  .error {
-    color: #dc2626;
-    font-size: 13px;
-    margin-top: 6px;
-    display: none;
-  }
+  body { font-family: sans-serif; background:#f5f5f7; display:flex; justify-content:center; padding:40px 16px; }
+  .card { background:#fff; padding:24px; border-radius:12px; max-width:360px; width:100%; box-shadow:0 2px 10px rgba(0,0,0,0.08); }
+  input { width:100%; padding:12px; font-size:16px; border:1px solid #ddd; border-radius:8px; margin:12px 0; box-sizing:border-box; }
+  button { width:100%; padding:12px; font-size:16px; background:#6d28d9; color:#fff; border:none; border-radius:8px; cursor:pointer; }
+  button:disabled { background:#aaa; }
+  #result { margin-top:20px; text-align:center; }
+  #result img { max-width:200px; }
+  #error { color:#c0392b; margin-top:8px; font-size:14px; }
 </style>
 </head>
 <body>
-
-<div class="card">
-  <h2>💳 Payment Link Generator</h2>
-
-  <div class="field">
-    <label for="amount">Enter Amount (₹)</label>
-    <input type="number" id="amount" placeholder="Enter Amount" min="1">
+  <div class="card">
+    <h2>Amount Enter Karein</h2>
+    <input type="number" id="amount" placeholder="e.g. 500" min="1" />
+    <button id="payBtn">Pay Now</button>
+    <div id="error"></div>
+    <div id="result"></div>
   </div>
-
-  <div class="error" id="errMsg">Kripya sahi Amount daalein.</div>
-
-  <button onclick="generateQR()">Payment Link / QR Banayein</button>
-
-  <div id="qrBox">
-    <div class="amtShow">₹ <span id="amtText"></span></div>
-    <div id="qrcode"></div>
-    <div class="note">Is QR ko kisi bhi UPI app (GPay, PhonePe, Paytm) se scan karke payment kar sakte hain.</div>
-    <div class="note" id="linkText" style="word-break: break-all; margin-top:10px;"></div>
-  </div>
-</div>
 
 <script>
-// Apna UPI ID aur naam yahan set karein
-const UPI_ID = "example@upi";
-const PAYEE_NAME = "Merchant";
+const payBtn = document.getElementById("payBtn");
+const amountInput = document.getElementById("amount");
+const errorDiv = document.getElementById("error");
+const resultDiv = document.getElementById("result");
 
-function generateQR() {
-  const upiId = UPI_ID;
-  const payeeName = PAYEE_NAME;
-  const amount = document.getElementById('amount').value.trim();
-  const errMsg = document.getElementById('errMsg');
+payBtn.addEventListener("click", async () => {
+  errorDiv.textContent = "";
+  resultDiv.innerHTML = "";
 
+  const amount = amountInput.value;
   if (!amount || Number(amount) <= 0) {
-    errMsg.style.display = 'block';
-    document.getElementById('qrBox').style.display = 'none';
+    errorDiv.textContent = "Sahi amount daalein";
     return;
   }
-  errMsg.style.display = 'none';
 
-  // UPI deep link format
-  const upiLink = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}&am=${encodeURIComponent(amount)}&cu=INR`;
+  payBtn.disabled = true;
+  payBtn.textContent = "Processing...";
 
-  document.getElementById('qrcode').innerHTML = '';
-  new QRCode(document.getElementById('qrcode'), {
-    text: upiLink,
-    width: 200,
-    height: 200,
-    colorDark: "#1f2937",
-    colorLight: "#ffffff"
-  });
+  try {
+    const res = await fetch("/api/create-payment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount }),
+    });
+    const data = await res.json();
 
-  document.getElementById('amtText').innerText = Number(amount).toLocaleString('en-IN');
-  document.getElementById('linkText').innerText = upiLink;
-  document.getElementById('qrBox').style.display = 'block';
-}
+    if (!data.success) {
+      errorDiv.textContent = data.message || "Kuch galat hua";
+      return;
+    }
+
+    resultDiv.innerHTML = 
+      <p>Order: ${data.merchant_order_no}</p>
+      <img src="${data.qr_code}" alt="Payment QR" />
+      <p><a href="${data.payment_url}" target="_blank">Payment Link Kholein</a></p>
+    ;
+  } catch (err) {
+    errorDiv.textContent = "Server error, dobara try karein";
+  } finally {
+    payBtn.disabled = false;
+    payBtn.textContent = "Pay Now";
+  }
+});
 </script>
-
 </body>
 </html>
