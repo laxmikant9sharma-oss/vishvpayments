@@ -22,10 +22,10 @@ function generateSignature(params, apiKey) {
   let signStr = "";
 
   for (const key of sortedKeys) {
-   signStr += `${key}=${filtered[key]}&`;
+   signStr += key + "=" + filtered[key] + "&";
   }
 
-  signStr += `key=${apiKey}`;
+  signStr += "key=" + apiKey;
 
   return crypto.createHash("md5").update(signStr).digest("hex");
 }
@@ -43,7 +43,7 @@ router.post("/create-payment", async (req, res) => {
 
     const formattedAmount = Number(amount).toFixed(2);
 
-    const merchantOrderNo = ORD${Date.now()};
+    const merchantOrderNo = "ORDS" + Date.now();
 
     const params = {
       merchant_id: MERCHANT_ID,
