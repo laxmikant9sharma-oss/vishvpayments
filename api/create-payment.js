@@ -201,12 +201,12 @@ module.exports = async function handler(req, res) {
 
     // Payment creation failed
     if (!response.ok || !data.success) {
-      await sql
+      await sql`
         UPDATE payments
         SET status = 'failed'
         WHERE merchant_order_no =
         ${merchantOrderNo}
-      ;
+      `;
 
       return res.status(400).json({
         success: false,
