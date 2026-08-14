@@ -1,6 +1,8 @@
 const crypto = require("crypto");
+const { neon } = require("@neondatabase/serverless");
 
 module.exports = async function handler(req, res) {
+
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
@@ -9,8 +11,36 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const amount = Number(req.body?.amount);
 
+    const telegramUsername =
+      String(req.body?.telegram_username || "").trim();
+
+    const mobile =
+      String(req.body?.mobile || "").trim();
+
+    const amount =
+      Number(req.body?.amount);
+
+
+    // Validate Telegram username
+    if (!telegramUsername) {
+      return res.status(400).json({
+        success: false,
+        message: "Telegram username is required"
+      });
+    }
+
+
+    // Validate mobile
+    if (!mobile) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile number is required"
+      });
+    }
+
+
+    // Validate amount
     if (!amount || amount <= 0) {
       return res.status(400).json({
         success: false,
@@ -18,11 +48,22 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const merchantId = process.env.WATCHPAYS_MERCHANT_ID;
-    const apiKey = process.env.WATCHPAYS_API_KEY;
+
+    const merchantId =
+      process.env.WATCHPAYS_MERCHANT_ID;
+
+    const apiKey =
+      process.env.WATCHPAYS_API_KEY;
+
+    const databaseUrl =
+      process.env.DATABASE_URL;
+
 
     if (!merchantId || !apiKey) {
-      console.error("Missing WatchPays environment variables");
+
+      console.error(
+        "Missing WatchPays environment variables"
+      );
 
       return res.status(500).json({
         success: false,
@@ -30,17 +71,76 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    const formattedAmount = amount.toFixed(2);
 
+    if (!databaseUrl) {
+
+      console.error(
+        "DATABASE_URL is missing"
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: "Database configuration missing"
+      });
+    }
+
+
+    const sql = neon(databaseUrl);
+
+    const formattedAmount =
+      amount.toFixed(2);
+
+
+    // Create our merchant order number
     const merchantOrderNo =
-      "ORD" + Date.now() + Math.floor(Math.random() * 1000);
+      "ORD" +
+      Date.now() +
+      Math.floor(Math.random() * 1000);
 
-    const protocol = req.headers["x-forwarded-proto"] || "https";
-    const host = req.headers.host;
+
+    const protocol =
+      req.headers["x-forwarded-proto"] || "https";
+
+    const host =
+      req.headers.host;
+
 
     const callbackUrl =
-      protocol + "://" + host + "/api/callback";
+      protocol +
+      "://" +
+      host +
+      "/api/callback";
 
+
+    /*
+      Save order BEFORE creating payment.
+
+      This lets us keep track of:
+      Telegram username
+      Mobile
+      Amount
+      Merchant Order Number
+    */
+
+    await sql
+      INSERT INTO payments (
+        merchant_order_no,
+        telegram_username,
+        mobile,
+        amount,
+        status
+      )
+      VALUES (
+        ${merchantOrderNo},
+        ${telegramUsername},
+        ${mobile},
+        ${formattedAmount},
+        'pending'
+      )
+    ;
+
+
+    // WatchPays signature parameters
     const params = {
       merchant_id: merchantId,
       amount: formattedAmount,
@@ -48,31 +148,54 @@ module.exports = async function handler(req, res) {
       callback_url: callbackUrl
     };
 
-    const filteredParams = Object.fromEntries(
-      Object.entries(params).filter(function ([key, value]) {
-        return value !== undefined &&
-               value !== null &&
-               value !== "";
-      })
-    );
 
-    const sortedKeys = Object.keys(filteredParams).sort();
+    const filteredParams =
+      Object.fromEntries(
+        Object.entries(params).filter(
+          function ([key, value]) {
+            return (
+              value !== undefined &&
+              value !== null &&
+              value !== ""
+            );
+          }
+        )
+      );
+
+
+    const sortedKeys =
+      Object.keys(filteredParams).sort();
+
 
     let signString = "";
 
+
     for (const key of sortedKeys) {
+
       signString +=
-        key + "=" + filteredParams[key] + "&";
+        key +
+        "=" +
+        filteredParams[key] +
+        "&";
+
     }
 
-    signString = signString.slice(0, -1);
 
-    signString += "&key=" + apiKey;
+    signString =
+      signString.slice(0, -1);
 
-    const signature = crypto
-      .createHash("md5")
-      .update(signString, "utf8")
-      .digest("hex");
+
+    signString +=
+      "&key=" +
+      apiKey;
+
+
+    const signature =
+      crypto
+        .createHash("md5")
+        .update(signString, "utf8")
+        .digest("hex");
+
 
     const payload = {
       merchant_id: merchantId,
@@ -83,46 +206,58 @@ module.exports = async function handler(req, res) {
       signature: signature
     };
 
-    console.log("Sending payment request:", {
-      merchant_order_no: merchantOrderNo,
-      amount: formattedAmount
-    });
 
-    const response = await fetch(
-      "https://api.watchpays.com/v1/create",
+    console.log(
+      "Sending payment request:",
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
+        merchant_order_no: merchantOrderNo,
+        telegram_username: telegramUsername,
+        mobile: mobile,
+        amount: formattedAmount
       }
     );
 
-    const data = await response.json();
 
-    console.log("WatchPays response:", data);
+    const response =
+      await fetch(
+        "https://api.watchpays.com/v1/create",
+        {
+          method: "POST",headers: {
+            "Content-Type": "application/json"
+          },
+
+          body: JSON.stringify(payload)
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    console.log(
+      "WatchPays response:",
+      data
+    );
+
 
     if (!response.ok || !data.success) {
+
+      await sql
+        UPDATE payments
+        SET status = 'failed'
+        WHERE merchant_order_no =
+        ${merchantOrderNo}
+      ;
+
       return res.status(400).json({
         success: false,
-        message: data.message || "Payment creation failed"
+        message:
+          data.message ||
+          "Payment creation failed"
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      payment_url: data.payment_url,
-      merchant_order_no: merchantOrderNo,
-      amount: formattedAmount
-    });
 
-  } catch (err) {
-    console.error("create-payment error:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Server error"
-    });
-  }
-};
+    /*
+      WatchPays
