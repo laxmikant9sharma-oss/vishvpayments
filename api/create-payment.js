@@ -98,7 +98,7 @@ module.exports = async function handler(req, res) {
       "/api/callback";
 
     // Save order in database BEFORE payment creation
-    await sql
+    await sql`
       INSERT INTO payments (
         merchant_order_no,
         telegram_username,
@@ -113,7 +113,7 @@ module.exports = async function handler(req, res) {
         ${formattedAmount},
         'pending'
       )
-    ;
+    `;
 
     // WatchPays signature parameters
     const params = {
@@ -217,11 +217,11 @@ module.exports = async function handler(req, res) {
     }
 
     // Save payment URL
-    await sql
+    await sql`
       UPDATE payments
       SET payment_url = ${data.payment_url}
       WHERE merchant_order_no = ${merchantOrderNo}
-    ;
+    `;
 
     console.log(
       "Payment created successfully:",
